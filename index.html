@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Inclusive Campus Accessibility Audit</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500&family=Schibsted+Grotesk:wght@600;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-overview" viewBox="0 0 24 24"><path d="M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z"/></symbol>
+  <symbol id="i-audit" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8.5 12l2.2 2.2L15.5 9.5"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h6a3 3 0 0 0 0-6h-4a3 3 0 0 1 0-6h6"/></symbol>
+  <symbol id="i-facilities" viewBox="0 0 24 24"><path d="M4 21V4a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v17M15 9h4a1 1 0 0 1 1 1v11M3 21h18M8 7h3M8 11h3M8 15h3"/></symbol>
+  <symbol id="i-actions" viewBox="0 0 24 24"><path d="M5 21V4M5 4h12l-2.5 4L17 12H5"/></symbol>
+  <symbol id="i-reports" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M2 20h20"/></symbol>
+  <symbol id="i-theme" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18" /><path d="M12 3a9 9 0 0 1 0 18z" fill="currentColor"/></symbol>
+  <symbol id="i-text" viewBox="0 0 24 24"><path d="M3 19l5-13 5 13M5 14h6M16 19l3-8 3 8M17 17h4"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></symbol>
+</svg>
+<a class="skip" href="#content">Skip to content</a>
+<div class="shell">
+  <aside class="side">
+    <div class="top">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="4.5" r="1.6"/><path d="M11 8v6h5l3 5"/><path d="M8 11h5"/><path d="M8.5 14a5 5 0 1 0 6 6.5"/></svg>
+        </span>
+        <div><h1>Inclusive Campus Accessibility Audit</h1><p>Inspect, fix, then verify the fix</p></div>
+      </div>
+      <div class="tools">
+        <button class="btn sm" type="button" id="themeBtn" data-act="theme" title="Change theme"><svg class="ic" aria-hidden="true"><use href="#i-theme"/></svg><span class="tt">Theme: auto</span></button>
+        <button class="btn sm" type="button" id="sizeBtn" data-act="size" aria-pressed="false" title="Larger text"><svg class="ic" aria-hidden="true"><use href="#i-text"/></svg><span class="tt">Larger text</span></button>
+      </div>
+    </div>
+    <div class="pick"><label class="lbl" for="collegeSel">College in focus</label><select id="collegeSel" data-chg="college"></select><div class="ctx" id="ctx"></div></div>
+    <nav class="tabs" id="tabs" aria-label="Sections"></nav>
+  </aside>
+  <main class="main" id="content" tabindex="-1"><div id="app"></div></main>
+</div>
+<div id="toast" role="status" aria-live="polite" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

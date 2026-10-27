@@ -1,0 +1,577 @@
+(function(){
+'use strict';
+var KEY='icaa-v1',UIKEY='icaa-ui',DAY=86400000;
+var ZONES=['Campus & grounds','Administration block','Library','Science departments','Humanities departments','Commerce & management','Hostel & canteen'];
+var CATS=[['route','Approach and routes'],['vert','Vertical access'],['toilet','Toilets'],['learn','Learning spaces'],['at','Assistive technology and information'],['safe','Signage and safety']];
+var ITEMS=[
+ {id:'r1',cat:'route',w:3,sc:'dept',t:'Step-free entrance with a ramp no steeper than 1:12 and handrails on both sides',issue:'Entrance ramp is steeper than 1:12 and has no handrail on one side.'},
+ {id:'r2',cat:'route',w:2,sc:'campus',t:'Firm, non-slip path at least 1.2 m wide from the gate to every main block',issue:'Path surface is broken in places and narrows below 1.2 m near the main block.'},
+ {id:'r3',cat:'route',w:2,sc:'campus',t:'Marked accessible parking or drop-off point close to the entrance',issue:'No marked accessible parking or drop-off bay.'},
+ {id:'r4',cat:'route',w:1,sc:'campus',t:'Tactile paving and contrast strips at steps, crossings and ramps',issue:'Tactile paving missing at the main crossing and at the steps.'},
+ {id:'r5',cat:'route',w:2,sc:'dept',t:'Corridors and doorways at least 900 mm clear width',issue:'Several doorways measure under 900 mm clear.'},
+ {id:'v1',cat:'vert',w:3,sc:'dept',t:'Working lift or ramp to every floor used for teaching',issue:'Lift out of service; upper floors reachable by stairs only.'},
+ {id:'v2',cat:'vert',w:2,sc:'dept',t:'Lift has Braille buttons, floor announcements and controls within reach',issue:'Lift has no Braille buttons or floor announcements.'},
+ {id:'v3',cat:'vert',w:2,sc:'campus',t:'Evacuation plan for wheelchair users, with refuge areas or evacuation chairs',issue:'No refuge area or evacuation chair; plan does not cover wheelchair users.'},
+ {id:'t1',cat:'toilet',w:3,sc:'all',t:'Accessible toilet on an accessible floor, unlocked and working',issue:'Accessible toilet is locked, used for storage or out of order.'},
+ {id:'t2',cat:'toilet',w:2,sc:'dept',t:'Grab rails, emergency alarm cord and 1.5 m turning space in the accessible toilet',issue:'Grab rails loose or missing; no alarm cord; turning space under 1.5 m.'},
+ {id:'t3',cat:'toilet',w:1,sc:'dept',t:'Toilet signs with pictogram and Braille',issue:'Signs lack a pictogram or Braille.'},
+ {id:'d1',cat:'learn',w:2,sc:'dept',t:'Classrooms have free space for a wheelchair user, not blocked by fixed furniture',issue:'Fixed benches leave no space for a wheelchair user.'},
+ {id:'d2',cat:'learn',w:2,sc:'dept',t:'Lowered or adjustable lab benches, library counters and notice boards',issue:'Lab benches and counters are at standing height only.'},
+ {id:'d3',cat:'learn',w:1,sc:'dept',t:'Hearing loop or live captions in lecture halls and seminar rooms',issue:'No hearing loop or captioning in the seminar hall.'},
+ {id:'e1',cat:'at',w:2,sc:'dept',t:'Assistive technology is installed and usable in this department',issue:'Screen reader and magnifier are not installed on department computers.'},
+ {id:'e2',cat:'at',w:2,sc:'campus',t:'Website, learning platform and notices meet accessibility standards, with accessible alternatives',issue:'Website fails keyboard and screen-reader checks; notices are scanned images.'},
+ {id:'e3',cat:'at',w:3,sc:'campus',t:'Named disability-support officer or cell, and a complaint route students know about',issue:'No named disability-support officer; students do not know where to complain.'},
+ {id:'e4',cat:'at',w:2,sc:'campus',t:'Exam provisions in place: scribe, extra time, accessible exam rooms',issue:'No standing process for scribes or accessible exam rooms.'},
+ {id:'f1',cat:'safe',w:1,sc:'all',t:'High-contrast signage with tactile or Braille directions',issue:'Signs are low contrast and have no tactile or Braille element.'},
+ {id:'f2',cat:'safe',w:2,sc:'campus',t:'Fire alarms are both visual and audible',issue:'Alarms are audible only.'}
+];
+var SEV={3:'Critical',2:'Major',1:'Minor'},DAYS={3:30,2:60,1:90};
+var NODES={gate:'Main gate',admin:'Administration',library:'Library',arts:'Humanities block',hall:'Auditorium',science:'Science block',canteen:'Canteen',hostel:'Hostel'};
+var POS={gate:[80,250],admin:[270,250],library:[450,100],arts:[640,100],hall:[765,255],science:[450,400],canteen:[270,410],hostel:[650,400]};
+var EDGES=[
+ {a:'gate',b:'admin',k:'ramp',name:'Main entrance ramp',zone:'Campus & grounds'},
+ {a:'admin',b:'library',k:'lift',name:'Library block lift',zone:'Library'},
+ {a:'admin',b:'science',k:'ramp',name:'Administration to Science ramp',zone:'Science departments'},
+ {a:'admin',b:'canteen',k:'path',name:'Administration to Canteen path',zone:'Campus & grounds'},
+ {a:'canteen',b:'science',k:'path',name:'Canteen to Science path',zone:'Campus & grounds'},
+ {a:'library',b:'arts',k:'ramp',name:'Library to Humanities ramp',zone:'Humanities departments'},
+ {a:'arts',b:'hall',k:'ramp',name:'Auditorium ramp',zone:'Campus & grounds'},
+ {a:'science',b:'hostel',k:'path',name:'Science to Hostel path',zone:'Campus & grounds'},
+ {a:'hostel',b:'hall',k:'path',name:'Hostel to Auditorium path',zone:'Campus & grounds'}
+];
+var ATK=[['sr','Screen-reader licences'],['br','Braille embosser or display'],['mag','Desktop magnifier or CCTV reader'],['loop','Hearing loop or FM system'],['calc','Talking calculators'],['desk','Adjustable-height desks'],['ocr','Text-to-speech scanner or OCR pen'],['tac','Tactile maps and models']];
+var AUD=['A. Menon','R. Pillai','S. Nair','F. Rahman'],OWN=['Principal','Estate officer','Department head','Disability-support officer','PWD liaison'];
+var SL={
+ ramp:{ok:'Working',partial:'Needs repair',blocked:'Out of service',unchecked:'Not checked'},
+ path:{ok:'Clear',partial:'Partly usable',blocked:'Blocked',unchecked:'Not checked'}};
+SL.lift=SL.ramp;SL.toilet=SL.ramp;
+var SG={ok:['ok','✓'],partial:['warn','½'],blocked:['bad','✕'],unchecked:['na','?']};
+var RESL={c:['ok','✓','Met'],p:['warn','½','Partly met'],n:['bad','✕','Not met'],na:['na','–','N/A']};
+var ASL={open:['bad','Open'],in_progress:['warn','In progress'],fixed:['acc','Fixed, awaiting verification'],verified:['ok','Verified fixed'],reopened:['bad','Reopened']};
+
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;var t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+function hash(s){var h=2166136261;for(var i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0}
+function eod(ts){var d=new Date(ts);return new Date(d.getFullYear(),d.getMonth(),d.getDate(),23,59,59).getTime()}
+function pad(n){return n<10?'0'+n:''+n}
+function dstr(ts){var d=new Date(ts);return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+function fromD(v){var p=v.split('-').map(Number);return new Date(p[0],p[1]-1,p[2],23,59,59).getTime()}
+function fmt(ts){return ts?new Date(ts).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'}):'Not yet'}
+function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
+function applicable(z){return ITEMS.filter(function(i){return z==='Campus & grounds'?i.sc!=='dept':i.sc!=='campus'})}
+
+/* ---------- sample data ---------- */
+var SEEDC=[
+ {id:'kgc',name:'Kaveri Government College',district:'Thrissur',type:'Government arts and science',q:.8,zones:ZONES},
+ {id:'vasc',name:'Vembanad Arts and Science College',district:'Ernakulam',type:'Aided arts and science',q:.64,zones:ZONES},
+ {id:'nit',name:'Nila Institute of Technology',district:'Palakkad',type:'Self-financing engineering',q:.72,zones:ZONES.filter(function(z){return z!=='Humanities departments'})},
+ {id:'awc',name:'Anjali Women’s College',district:'Kozhikode',type:'Aided women’s college',q:.5,zones:ZONES},
+ {id:'ssp',name:'Sahyadri Polytechnic College',district:'Idukki',type:'Government polytechnic',q:.33,zones:ZONES.filter(function(z){return z!=='Humanities departments'&&z!=='Commerce & management'})},
+ {id:'mtc',name:'Marthanda Teacher Training College',district:'Thiruvananthapuram',type:'Government teacher education',q:.56,zones:ZONES.filter(function(z){return z!=='Science departments'&&z!=='Commerce & management'})}
+];
+function newAct(S,o){S.n++;var a={id:'CA-'+String(S.n).padStart(4,'0'),src:o.src,ref:o.ref,cid:o.cid,zone:o.zone,title:o.title,sev:o.sev,owner:o.owner||'',raised:o.raised,deadline:eod(o.raised+DAYS[o.sev]*DAY),status:'open',hist:[{d:o.raised,t:'Raised',note:o.note||''}],before:o.before||'',after:'',vnote:'',vphoto:'',fixedOn:0,verifiedOn:0,reopens:0,ext:0};S.actions.push(a);return a}
+function zoneFor(S,cid,z){var c=S.colleges.filter(function(x){return x.id===cid})[0];return c&&c.zones.indexOf(z)>-1?z:'Campus & grounds'}
+function seed(){
+ var S={v:1,n:0,sel:'kgc',colleges:[],results:{},assets:[],at:{},actions:[]},now=Date.now(),aid=0;
+ SEEDC.forEach(function(c){
+  var R=mulberry(hash(c.id));
+  var col={id:c.id,name:c.name,district:c.district,type:c.type,zones:c.zones.slice(),audit:{}};S.colleges.push(col);
+  function stOf(){var x=R();return x<c.q+.1?'ok':(x<c.q+.1+(1-c.q-.1)*.55?'partial':'blocked')}
+  function seedAct(o,force){
+   var span=Math.max(DAY,now-o.raised),x=R(),st=force||(x<.26?'open':x<.5?'in_progress':x<.64?'fixed':x<.92?'verified':'reopened');
+   o.owner=OWN[Math.floor(R()*OWN.length)];var a=newAct(S,o);
+   if(st!=='open')a.hist.push({d:o.raised+span*.25,t:'Work started',note:''});
+   if(st==='fixed'||st==='verified'||st==='reopened'){a.fixedOn=o.raised+span*.6;a.hist.push({d:a.fixedOn,t:'Marked fixed by college',note:''})}
+   if(st==='verified'){a.verifiedOn=o.raised+span*.85;a.hist.push({d:a.verifiedOn,t:'Verified fixed at re-inspection',note:'Re-inspected on site.'})}
+   if(st==='reopened'){a.reopens=1;a.hist.push({d:o.raised+span*.85,t:'Re-inspection failed, reopened',note:'Still not fixed.'});a.deadline=eod(o.raised+span*.85+14*DAY)}
+   if((st==='open'||st==='in_progress')&&R()<.15){a.ext=1;a.deadline=eod(a.deadline+30*DAY);a.hist.push({d:o.raised+span*.4,t:'Deadline extended by 30 days',note:'Contractor delay.'})}
+   a.status=st;return a}
+  EDGES.forEach(function(e,i){S.assets.push({id:'A'+(++aid),cid:c.id,kind:e.k,name:e.name,loc:NODES[e.a]+' to '+NODES[e.b],edge:i,zone:e.zone,status:stOf(),checked:now-(5+R()*70)*DAY,note:''})});
+  S.assets.push({id:'A'+(++aid),cid:c.id,kind:'lift',name:'Science block lift',loc:'Science block',edge:null,zone:'Science departments',status:stOf(),checked:now-(5+R()*70)*DAY,note:''});
+  [['Administration ground floor','Administration block'],['Library ground floor','Library'],['Science block ground floor','Science departments'],['Hostel block','Hostel & canteen']].forEach(function(t){
+   S.assets.push({id:'A'+(++aid),cid:c.id,kind:'toilet',name:'Accessible toilet, '+t[0],loc:t[0],edge:null,zone:t[1],status:stOf(),checked:now-(5+R()*70)*DAY,note:'',feat:{rails:R()<c.q+.15,door:R()<c.q+.2,alarm:R()<c.q,turn:R()<c.q+.1}})});
+  S.assets.filter(function(a){return a.cid===c.id}).forEach(function(a){
+   var z=zoneFor(S,c.id,a.zone);
+   if(a.status!=='ok')seedAct({src:'asset',ref:a.id,cid:c.id,zone:z,title:(a.status==='blocked'?'Restore ':'Repair ')+a.name,sev:a.status==='blocked'?3:2,raised:now-(5+R()*85)*DAY},['open','in_progress','reopened'][Math.floor(R()*3)]);
+   else if(R()<.3)seedAct({src:'asset',ref:a.id,cid:c.id,zone:z,title:'Repair '+a.name,sev:2,raised:now-(40+R()*100)*DAY},R()<.2?'fixed':'verified')});
+  ATK.forEach(function(k){
+   var need=1+Math.floor(R()*6),own=Math.max(0,need-Math.round((1-c.q)*R()*4)),work=Math.max(0,own-Math.round((1-c.q)*R()*own*.7));
+   S.at[c.id+'|'+k[0]]={needed:need,owned:own,working:work};
+   if(need-work>0)seedAct({src:'at',ref:c.id+'|'+k[0],cid:c.id,zone:zoneFor(S,c.id,'Library'),title:'Close shortage: '+k[1],sev:2,raised:now-(10+R()*80)*DAY},R()<.5?'open':'in_progress')});
+  col.zones.forEach(function(z){
+   var when=now-(12+R()*100)*DAY;col.audit[z]={date:when,by:AUD[Math.floor(R()*AUD.length)]};
+   applicable(z).forEach(function(it){
+    var key=c.id+'|'+z+'|'+it.id,k=Math.min(.97,Math.max(.05,c.q-(it.w===3?.1:0)+(R()-.5)*.2)),x=R(),s;
+    if(z==='Hostel & canteen'&&it.cat==='learn')s='na';
+    else if((it.id==='v1'||it.id==='v2')&&R()<.15)s='na';
+    else s=x<k?'c':(x<k+(1-k)*.45?'p':'n');
+    var r={s:s,initial:s,note:'',photo:'',date:when};S.results[key]=r;
+    if(s==='p'||s==='n'){
+     r.note=it.issue;
+     var a=seedAct({src:'item',ref:key,cid:c.id,zone:z,title:it.t,sev:it.w,raised:when,note:it.issue});
+     if(a.status==='verified')r.s='c'}})})
+ });
+ ensureReal(S);
+ return S}
+/* Real colleges are listed with no inspection results. Scores exist only where someone has inspected. */
+var REAL=[
+ ['vjcet','Viswajyothi College of Engineering and Technology (VJCET), Vazhakulam','Ernakulam'],
+ ['cet','College of Engineering Trivandrum','Thiruvananthapuram'],
+ ['gect','Government Engineering College, Thrissur','Thrissur'],
+ ['mace','Mar Athanasius College of Engineering, Kothamangalam','Ernakulam'],
+ ['tkm','TKM College of Engineering, Kollam','Kollam'],
+ ['gecidk','Government Engineering College, Idukki','Idukki'],
+ ['maharajas','Maharaja’s College, Ernakulam','Ernakulam'],
+ ['stteresas','St. Teresa’s College, Ernakulam','Ernakulam'],
+ ['rcss','Rajagiri College of Social Sciences, Kalamassery','Ernakulam'],
+ ['univtvm','University College, Thiruvananthapuram','Thiruvananthapuram'],
+ ['gcwtvm','Government College for Women, Thiruvananthapuram','Thiruvananthapuram'],
+ ['marivanios','Mar Ivanios College, Thiruvananthapuram','Thiruvananthapuram'],
+ ['stthomas','St. Thomas College, Thrissur','Thrissur'],
+ ['christ','Christ College, Irinjalakuda','Thrissur'],
+ ['victoria','Government Victoria College, Palakkad','Palakkad'],
+ ['brennen','Government Brennen College, Thalassery','Kannur'],
+ ['farook','Farook College, Kozhikode','Kozhikode'],
+ ['gascalicut','Government Arts and Science College, Kozhikode','Kozhikode'],
+ ['newman','Newman College, Thodupuzha','Idukki'],
+ ['cms','CMS College, Kottayam','Kottayam'],
+ ['baselius','Baselius College, Kottayam','Kottayam'],
+ ['berchmans','St. Berchmans College, Changanassery','Kottayam'],
+ ['fatima','Fatima Mata National College, Kollam','Kollam'],
+ ['gckasaragod','Government College, Kasaragod','Kasaragod']
+];
+function blankCollege(S,id,name,d,type){
+ if(S.colleges.some(function(c){return c.id===id}))return false;
+ S.colleges.push({id:id,name:name,district:d,type:type,zones:ZONES.slice(),audit:{}});
+ EDGES.forEach(function(e,i){S.assets.push({id:'A'+id+i,cid:id,kind:e.k,name:e.name,loc:NODES[e.a]+' to '+NODES[e.b],edge:i,zone:e.zone,status:'unchecked',checked:0,note:''})});
+ ATK.forEach(function(k){S.at[id+'|'+k[0]]={needed:0,owned:0,working:0}});
+ return true}
+function ensureReal(S){var n=0;REAL.forEach(function(r){if(blankCollege(S,r[0],r[1],r[2],'Awaiting first inspection'))n++});return n}
+
+/* ---------- state ---------- */
+var S=null,ui={zone:{},fac:'routes',filter:'all',route:{},addCollege:false,confirmReset:false,copyText:'',q:'',dist:'',sort:'score'},view='overview',lastFocus='';
+try{var raw=localStorage.getItem(KEY);if(raw){S=JSON.parse(raw);if(!S||S.v!==1)S=null}}catch(e){S=null}
+if(!S)S=seed();
+else if(ensureReal(S)){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+var prefs={theme:'system',size:'normal'};
+try{var pr=localStorage.getItem(UIKEY);if(pr)prefs=Object.assign(prefs,JSON.parse(pr))}catch(e){}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){toast('This browser could not store the change. It stays until you close the page.')}}
+function savePrefs(){try{localStorage.setItem(UIKEY,JSON.stringify(prefs))}catch(e){}}
+function applyPrefs(){var r=document.documentElement;if(prefs.theme==='system')r.removeAttribute('data-theme');else r.setAttribute('data-theme',prefs.theme);if(prefs.size==='large')r.setAttribute('data-size','large');else r.removeAttribute('data-size');
+ var tb=document.getElementById('themeBtn'),sb=document.getElementById('sizeBtn'),nm=prefs.theme==='system'?'auto':prefs.theme,tt=tb.querySelector('.tt');
+ if(tt)tt.textContent='Theme: '+nm;tb.setAttribute('aria-label','Theme: '+nm+'. Press to change.');
+ sb.setAttribute('aria-pressed',prefs.size==='large'?'true':'false');sb.setAttribute('aria-label','Larger text, '+(prefs.size==='large'?'on':'off'))}
+function toast(m){var t=document.getElementById('toast');t.textContent=m;t.hidden=false;clearTimeout(toast.t);toast.t=setTimeout(function(){t.hidden=true},4200)}
+function col(id){return S.colleges.filter(function(c){return c.id===id})[0]}
+function sel(){if(!col(S.sel))S.sel=S.colleges[0].id;return S.sel}
+
+/* ---------- measures ---------- */
+function scoreOf(cid,zone){
+ var c=col(cid),zs=zone?[zone]:c.zones,num=0,den=0,done=0,tot=0,m=0,p=0,n=0;
+ zs.forEach(function(z){applicable(z).forEach(function(it){tot++;var r=S.results[cid+'|'+z+'|'+it.id];if(r&&r.s){done++;if(r.s!=='na'){den+=it.w;if(r.s==='c'){num+=it.w;m++}else if(r.s==='p'){num+=it.w*.5;p++}else n++}}})});
+ return {pct:den?Math.round(num/den*100):null,done:done,tot:tot,met:m,part:p,not:n}}
+function band(p){return p==null?['na','Not audited']:p>=80?['ok','Good']:p>=60?['warn','Fair']:p>=40?['bad','Poor']:['bad','Critical']}
+function isOver(a){return (a.status==='open'||a.status==='in_progress'||a.status==='reopened')&&a.deadline<Date.now()}
+function sumActs(list){
+ var n=Date.now(),o={total:list.length,verified:0,awaiting:0,onTime:0,late:0,overdue:0,reopened:0,ext:0,days:[]};
+ list.forEach(function(a){
+  o.ext+=a.ext||0;
+  if(a.status==='verified'){o.verified++;o.days.push((a.verifiedOn-a.raised)/DAY)}
+  else if(a.status==='fixed')o.awaiting++;
+  else{if(a.status==='reopened')o.reopened++;if(a.status==='reopened'||a.deadline<n)o.late++;else o.onTime++}
+  if(isOver(a))o.overdue++});
+ o.days.sort(function(x,y){return x-y});o.median=o.days.length?Math.round(o.days[Math.floor(o.days.length/2)]):null;return o}
+function actFor(src,ref){var l=S.actions.filter(function(a){return a.src===src&&a.ref===ref&&a.status!=='verified'});return l[0]}
+function lastAct(src,ref){var l=S.actions.filter(function(a){return a.src===src&&a.ref===ref}).sort(function(x,y){return x.raised-y.raised});return l[l.length-1]}
+function eAsset(cid,i){return S.assets.filter(function(a){return a.cid===cid&&a.edge===i})[0]}
+function eSt(cid,i){var a=eAsset(cid,i);return a?a.status:'unchecked'}
+function dij(cid,okSet){
+ var dist={gate:0},prev={},done={},E=EDGES.map(function(e,i){return {e:e,i:i,st:eSt(cid,i)}});
+ for(;;){var u=null;for(var k in dist){if(!done[k]&&(u===null||dist[k]<dist[u]))u=k}
+  if(u===null)break;done[u]=1;
+  E.forEach(function(x){if(okSet.indexOf(x.st)<0)return;var v=x.e.a===u?x.e.b:(x.e.b===u?x.e.a:null);if(!v)return;var w=dist[u]+(x.st==='ok'?1:4);if(dist[v]===undefined||w<dist[v]){dist[v]=w;prev[v]={from:u,i:x.i}}})}
+ return {dist:dist,prev:prev}}
+function reach(cid){
+ var A=dij(cid,['ok']),B=dij(cid,['ok','partial','unchecked']),st={};
+ Object.keys(NODES).forEach(function(n){st[n]=n==='gate'?'start':(A.dist[n]!==undefined?'clean':(B.dist[n]!==undefined?'caution':'none'))});
+ return {st:st,A:A,B:B}}
+function reachClean(cid){var r=reach(cid),n=0;Object.keys(r.st).forEach(function(k){if(r.st[k]==='clean')n++});return n}
+function pathTo(R,node){var P=R.st[node]==='clean'?R.A:R.B,steps=[],c=node;while(c!=='gate'){var p=P.prev[c];steps.unshift({from:p.from,to:c,i:p.i});c=p.from}return steps}
+
+/* ---------- mutations ---------- */
+function logA(a,t,note){a.hist.push({d:Date.now(),t:t,note:note||''})}
+function mkAct(o){o.raised=Date.now();return newAct(S,o)}
+function markFixed(a,note){a.status='fixed';a.fixedOn=Date.now();logA(a,'Marked fixed by college',note)}
+function reopen(a,note){a.status='reopened';a.reopens=(a.reopens||0)+1;a.deadline=eod(Date.now()+14*DAY);logA(a,'Reopened, new deadline in 14 days',note)}
+function verify(a,note,photo){
+ a.status='verified';a.verifiedOn=Date.now();a.after=photo||'';a.vnote='';a.vphoto='';logA(a,'Verified fixed at re-inspection',note);
+ if(a.src==='item'){var r=S.results[a.ref];if(r){r.s='c';r.date=Date.now()}}}
+function setRes(key,s){
+ var p=key.split('|'),cid=p[0],zone=p[1],it=ITEMS.filter(function(i){return i.id===p[2]})[0];
+ var r=S.results[key]||(S.results[key]={s:null,initial:null,note:'',photo:'',date:0});
+ if(r.s===s)return;
+ var act=actFor('item',key);
+ if(s==='c'&&act){
+  if(!(r.photo||r.note.trim().length>=10)){toast('Add a photo or a note of at least 10 characters before marking a reported problem as met.');return}
+  verify(act,r.note.trim()||'Marked met at re-inspection',r.photo);save();render();return}
+ if(s==='na'&&act){toast('Close the linked corrective action first.');return}
+ r.s=s;r.date=Date.now();if(!r.initial)r.initial=s;
+ if(s==='p'||s==='n'){
+  if(!act)mkAct({src:'item',ref:key,cid:cid,zone:zone,title:it.t,sev:it.w,before:r.photo,note:r.note});
+  else if(act.status==='fixed')reopen(act,'Re-inspection found it still '+(s==='n'?'not met':'only partly met'))}
+ var ca=col(cid).audit;ca[zone]=ca[zone]||{date:0,by:''};ca[zone].date=Date.now();
+ save();render()}
+function setAsset(id,s){
+ var a=S.assets.filter(function(x){return x.id===id})[0];if(!a||a.status===s)return;
+ a.status=s;a.checked=Date.now();var act=actFor('asset',id);
+ if(s==='partial'||s==='blocked'){
+  if(!act)mkAct({src:'asset',ref:id,cid:a.cid,zone:zoneFor(S,a.cid,a.zone),title:(s==='blocked'?'Restore ':'Repair ')+a.name,sev:s==='blocked'?3:2,note:'Status recorded as '+SL[a.kind][s].toLowerCase()+'.'});
+  else if(act.status==='fixed')reopen(act,'Facility found faulty again')}
+ else if(s==='ok'&&act&&act.status!=='fixed')markFixed(act,'Facility reported working. Needs re-inspection.');
+ save();render()}
+function setAT(cid,k,f,v){
+ var r=S.at[cid+'|'+k]||(S.at[cid+'|'+k]={needed:0,owned:0,working:0});r[f]=Math.max(0,Math.round(v)||0);
+ if(r.working>r.owned)r.working=r.owned;
+ var act=actFor('at',cid+'|'+k);
+ if(act&&r.needed-r.working<=0&&act.status!=='fixed')markFixed(act,'Stock now meets the need. Needs re-inspection.');
+ save();render()}
+
+/* ---------- photos ---------- */
+function readPhoto(file,cb){
+ var fr=new FileReader();
+ fr.onload=function(){var im=new Image();
+  im.onload=function(){var m=900,k=Math.min(1,m/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*k);c.height=Math.round(im.height*k);c.getContext('2d').drawImage(im,0,0,c.width,c.height);cb(c.toDataURL('image/jpeg',.7))};
+  im.onerror=function(){toast('That file is not an image.')};im.src=fr.result};
+ fr.readAsDataURL(file)}
+
+/* ---------- view helpers ---------- */
+function pill(t,g,l){return '<span class="pill t-'+t+'">'+(g?'<span aria-hidden="true">'+g+'</span>':'')+esc(l)+'</span>'}
+function stPill(kind,st){var g=SG[st];return pill(g[0],g[1],SL[kind][st])}
+function resPill(s){if(!s)return pill('na','?','Not inspected');var g=RESL[s];return pill(g[0],g[1],g[2])}
+function actPill(a){var g=ASL[a.status];return pill(g[0],'',g[1])}
+function scorePill(p){var b=band(p);return pill(b[0],'',b[1])}
+function meter(p){var b=band(p);return '<div class="meter" role="img" aria-label="'+(p==null?'Not audited':'Audit score '+p+' percent')+'"><i class="m-'+b[0]+'" style="width:'+(p||0)+'%"></i></div>'}
+function funnel(o,small){
+ var seg=[[o.verified,'s-ok','Verified fixed'],[o.awaiting,'s-acc','Fixed, awaiting verification'],[o.onTime,'s-warn','Being fixed, within deadline'],[o.late,'s-bad','Overdue or reopened']];
+ if(!o.total)return '<div class="fun'+(small?' sm':'')+'" role="img" aria-label="No problems logged"></div>';
+ var h='<div class="fun'+(small?' sm':'')+'" role="img" aria-label="'+seg.map(function(s){return s[0]+' '+s[2].toLowerCase()}).join(', ')+'">';
+ seg.forEach(function(s){if(s[0])h+='<span class="'+s[1]+'" style="width:'+(s[0]/o.total*100)+'%">'+(small?'':s[0])+'</span>'});
+ return h+'</div>'}
+function legend(o){
+ var seg=[[o.verified,'s-ok','Verified fixed'],[o.awaiting,'s-acc','Fixed, awaiting verification'],[o.onTime,'s-warn','Being fixed, within deadline'],[o.late,'s-bad','Overdue or reopened']];
+ return '<div class="legend">'+seg.map(function(s){return '<span><i class="'+s[1]+'"></i>'+s[2]+': <b class="mono">'+s[0]+'</b></span>'}).join('')+'</div>'}
+function pct(a,b){return b?Math.round(a/b*100):0}
+function fk(x){return ' data-fk="'+esc(x)+'"'}
+
+/* ---------- views ---------- */
+function ring(p){
+ var b=band(p),C=2*Math.PI*26,f=p==null?0:C*p/100;
+ return '<svg class="ring" viewBox="0 0 64 64" role="img" aria-label="'+(p==null?'Not audited':'Audit score '+p+' percent')+'"><circle cx="32" cy="32" r="26" fill="none" stroke="var(--surface-2)" stroke-width="7"/>'+(p==null?'':'<circle cx="32" cy="32" r="26" fill="none" stroke="var(--'+b[0]+')" stroke-width="7" stroke-linecap="round" stroke-dasharray="'+f.toFixed(1)+' '+C.toFixed(1)+'" transform="rotate(-90 32 32)"/>')+'<text x="32" y="38" text-anchor="middle" class="rt">'+(p==null?'–':p)+'</text></svg>'}
+function dirData(){return S.colleges.map(function(c){return {c:c,sc:scoreOf(c.id),ac:sumActs(S.actions.filter(function(a){return a.cid===c.id})),rc:reachClean(c.id)}})}
+function ccard(x){
+ var c=x.c,p=x.sc.pct;
+ return '<article class="card cc"><div class="cc-top">'+ring(p)+'<div><span class="lbl">'+esc(c.district)+'</span><h3>'+esc(c.name)+'</h3>'+scorePill(p)+'</div></div>'+
+  '<div class="ms"><div><b class="mono">'+x.ac.verified+'/'+x.ac.total+'</b><span class="lbl">Verified fixed</span></div><div><b class="mono">'+x.ac.overdue+'</b><span class="lbl">Overdue</span></div><div><b class="mono">'+x.rc+'/7</b><span class="lbl">Step-free</span></div></div>'+
+  funnel(x.ac,true)+'<button class="btn" type="button" data-act="open" data-id="'+c.id+'">Open this college</button></article>'}
+function vDirList(){
+ var q=(ui.q||'').trim().toLowerCase(),rows=dirData().filter(function(x){return(!q||(x.c.name+' '+x.c.district).toLowerCase().indexOf(q)>-1)&&(!ui.dist||x.c.district===ui.dist)});
+ if(!rows.length)return '<div class="card"><p>No college matches. Clear the search or choose All districts.</p></div>';
+ var ins=rows.filter(function(x){return x.sc.pct!=null}),pend=rows.filter(function(x){return x.sc.pct==null}),s=ui.sort;
+ ins.sort(function(a,b){return s==='low'?a.sc.pct-b.sc.pct:s==='overdue'?b.ac.overdue-a.ac.overdue:s==='az'?a.c.name.localeCompare(b.c.name):b.sc.pct-a.sc.pct});
+ pend.sort(function(a,b){return a.c.name.localeCompare(b.c.name)});
+ var h='';
+ if(ins.length)h+='<h3>Inspected ('+ins.length+')</h3><div class="grid">'+ins.map(ccard).join('')+'</div>';
+ if(pend.length){
+  h+='<h3>Awaiting first inspection ('+pend.length+')</h3><div class="pgrid">'+pend.map(function(x){return '<div class="pc"><div><p class="lbl">'+esc(x.c.district)+'</p><p>'+esc(x.c.name)+'</p></div><button class="btn sm" type="button" data-act="open" data-id="'+x.c.id+'">Start inspection</button></div>'}).join('')+'</div>'}
+ return h}
+function renderDir(){var e=document.getElementById('dirlist');if(e)e.innerHTML=vDirList()}
+function attention(){
+ var l=S.actions.filter(isOver).sort(function(a,b){return a.deadline-b.deadline||b.sev-a.sev}).slice(0,6);
+ if(!l.length)return '<p>Nothing is past its deadline.</p>';
+ return '<ul class="att-l">'+l.map(function(a){var d=Math.max(1,Math.round((Date.now()-a.deadline)/DAY)),c=col(a.cid);
+  return '<li class="att"><div><p class="lbl">'+esc(c.name)+' · '+esc(a.zone)+'</p><p>'+esc(a.title)+'</p></div><div class="att-r">'+pill(a.sev===3?'bad':'warn','✕',d+(d===1?' day':' days')+' overdue')+'<button class="btn sm" type="button" data-act="goact" data-id="'+a.id+'">Open</button></div></li>'}).join('')+'</ul>'}
+function vOverview(){
+ var T=sumActs(S.actions),insp=S.colleges.filter(function(c){return scoreOf(c.id).pct!=null}).length,reop=S.actions.filter(function(a){return a.reopens>0}).length;
+ var dists=[];S.colleges.forEach(function(c){if(dists.indexOf(c.district)<0)dists.push(c.district)});dists.sort();
+ var h='<div class="banner"><b>Sample data.</b> The six colleges with scores, and every problem logged against them, are made up so you can try the tool. Colleges under Awaiting first inspection are real names with no results. Changes save in this browser only.</div>';
+ h+='<section class="hero" aria-labelledby="hero-h"><div class="hero-top"><div><span class="lbl">From found to verified fixed</span><h2 id="hero-h" style="margin-top:.5rem">Are the problems actually getting fixed?</h2><p class="lead">A facility list says what exists. This audit follows every problem until an auditor goes back and confirms the fix. A fix a college reports counts only after that re-inspection.</p></div>';
+ h+='<div class="rate-box"><div class="rate">'+pct(T.verified,T.total)+'<small>%</small></div><p><b class="mono">'+T.verified+'</b> of <b class="mono">'+T.total+'</b> logged problems are verified fixed. <b class="mono">'+T.awaiting+'</b> more are reported fixed and wait for re-inspection.</p></div></div>';
+ h+=funnel(T)+legend(T);
+ h+='<div class="hstats"><div><span class="lbl">Median days to verified fix</span><b class="mono">'+(T.median==null?'n/a':T.median)+'</b></div><div><span class="lbl">Past deadline</span><b class="mono">'+T.overdue+'</b></div><div><span class="lbl">Reopened after failed check</span><b class="mono">'+reop+'</b></div><div><span class="lbl">Deadlines extended</span><b class="mono">'+T.ext+'</b></div><div><span class="lbl">Colleges inspected</span><b class="mono">'+insp+' of '+S.colleges.length+'</b></div></div></section>';
+ h+='<div class="two"><section class="card sec" aria-labelledby="att-h"><div class="rowb"><h3 id="att-h">Needs attention now</h3><span class="lbl">Longest overdue first</span></div>'+attention()+'</section>';
+ h+='<section class="card sec" aria-labelledby="mo-h"><h3 id="mo-h">Found and verified fixed, by month</h3>'+monthChart(S.actions)+'</section></div>';
+ h+='<section class="sec"><div class="rowb"><div class="pg"><span class="lbl">College directory</span><h2>All colleges</h2></div><button class="btn" type="button" data-act="addtoggle">'+(ui.addCollege?'Cancel':'Add a college')+'</button></div>';
+ if(ui.addCollege)h+='<form class="card row" id="addform" data-act="addform" style="align-items:flex-end"><div class="field"><label for="nc-name">College name</label><input id="nc-name" required autocomplete="off" style="min-width:min(100%,18rem)"></div><div class="field"><label for="nc-dist">District</label><input id="nc-dist" required autocomplete="off"></div><button class="btn primary" type="submit">Create college</button><p class="mut" style="flex-basis:100%;font-size:.9rem">The new college starts with every route, ramp and lift marked Not checked, and nothing inspected.</p></form>';
+ h+='<div class="tb"><div class="field search"><label for="dq">Search colleges</label><input id="dq" type="search" data-inp="q" value="'+esc(ui.q)+'" placeholder="Name or district" autocomplete="off"></div>';
+ h+='<div class="field"><label for="dd">District</label><select id="dd" data-chg="ddist"><option value="">All districts</option>'+dists.map(function(d){return '<option'+(ui.dist===d?' selected':'')+'>'+esc(d)+'</option>'}).join('')+'</select></div>';
+ h+='<div class="field"><label for="ds">Sort inspected by</label><select id="ds" data-chg="dsort">'+[['score','Highest score'],['low','Lowest score'],['overdue','Most overdue'],['az','Name A to Z']].map(function(o){return '<option value="'+o[0]+'"'+(ui.sort===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select></div></div>';
+ h+='<div class="sec" id="dirlist" aria-live="polite" style="gap:1.2rem">'+vDirList()+'</div></section>';
+ h+='<section class="sec"><h2>How the score works</h2><div class="card"><ul class="list-sp"><li>Each checklist item is Met, Partly met, Not met or N/A. N/A items are left out.</li><li>Items carry a weight: critical 3, major 2, minor 1. Met earns full weight, partly met earns half.</li><li>Score = weight earned divided by weight applicable. Bands: 80 and above Good, 60 to 79 Fair, 40 to 59 Poor, below 40 Critical.</li><li>Every partly met or not met item opens a corrective action with a deadline: 30 days for critical, 60 for major, 90 for minor.</li><li>An item returns to Met only through a re-inspection with a photo or a written finding.</li></ul></div></section>';
+ return h}
+function monthChart(list){
+ var n=new Date(),ms=[],i;
+ for(i=5;i>=0;i--){var d=new Date(n.getFullYear(),n.getMonth()-i,1);ms.push({y:d.getFullYear(),m:d.getMonth(),r:0,v:0})}
+ function find(ts){var d=new Date(ts);return ms.filter(function(x){return x.y===d.getFullYear()&&x.m===d.getMonth()})[0]}
+ list.forEach(function(a){var m=find(a.raised);if(m)m.r++;if(a.verifiedOn){var q=find(a.verifiedOn);if(q)q.v++}});
+ var mx=Math.max(4,Math.max.apply(null,ms.map(function(x){return Math.max(x.r,x.v)}))),top=Math.ceil(mx/2)*2;
+ var W=480,H=250,L=34,B=34,T=18,ph=H-T-B,gw=(W-L-8)/6,bw=gw*.3;
+ function y(v){return T+ph-v/top*ph}
+ var s='<svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Problems found and problems verified fixed in each of the last six months" style="width:100%;height:auto;display:block">';
+ [0,top/2,top].forEach(function(t){s+='<line class="gl" x1="'+L+'" x2="'+(W-4)+'" y1="'+y(t)+'" y2="'+y(t)+'" stroke-width="1"/><text x="'+(L-6)+'" y="'+(y(t)+4)+'" text-anchor="end">'+t+'</text>'});
+ ms.forEach(function(m,k){
+  var x0=L+gw*k+gw/2,lab=new Date(m.y,m.m,1).toLocaleDateString('en-IN',{month:'short'});
+  s+='<rect class="b1" x="'+(x0-bw-1)+'" y="'+y(m.r)+'" width="'+bw+'" height="'+(T+ph-y(m.r))+'"/><rect class="b2" x="'+(x0+1)+'" y="'+y(m.v)+'" width="'+bw+'" height="'+(T+ph-y(m.v))+'"/>';
+  s+='<text x="'+(x0-bw/2-1)+'" y="'+(y(m.r)-4)+'" text-anchor="middle">'+m.r+'</text><text x="'+(x0+bw/2+1)+'" y="'+(y(m.v)-4)+'" text-anchor="middle">'+m.v+'</text><text x="'+x0+'" y="'+(H-12)+'" text-anchor="middle">'+lab+'</text>'});
+ s+='</svg><div class="legend" style="margin-top:.5rem"><span><i class="s-acc"></i>Problems found</span><span><i class="s-ok"></i>Problems verified fixed</span></div>';
+ return s}
+
+function itemCard(cid,zone,it){
+ var key=cid+'|'+zone+'|'+it.id,r=S.results[key]||{s:null,note:'',photo:''},la=lastAct('item',key),act=actFor('item',key),sid=key.replace(/\W/g,'');
+ var tone=r.s?RESL[r.s]:['na','?','Not inspected'];
+ var h='<article class="card item"><div class="top2"><div class="hd"><span class="ico t-'+tone[0]+'" aria-hidden="true">'+tone[1]+'</span><p id="q-'+sid+'">'+esc(it.t)+' <span class="lbl" style="font-weight:400">'+SEV[it.w]+'</span></p></div>';
+ h+='<div class="seg" role="radiogroup" aria-labelledby="q-'+sid+'">';
+ [['c','Met','✓'],['p','Partly','½'],['n','Not met','✕'],['na','N/A','–']].forEach(function(o){h+='<button type="button" role="radio" class="'+o[0]+'" aria-checked="'+(r.s===o[0])+'" data-act="res" data-key="'+esc(key)+'" data-v="'+o[0]+'"'+fk('r'+key+o[0])+'><span aria-hidden="true">'+o[2]+'</span>'+o[1]+'</button>'});
+ h+='</div></div>';
+ h+='<div class="field"><label for="n-'+sid+'">Finding or measurement</label><textarea id="n-'+sid+'" data-chg="note" data-key="'+esc(key)+'" placeholder="What did you see? Add measurements.">'+esc(r.note)+'</textarea></div>';
+ h+='<div class="row">';
+ h+='<label class="btn sm">'+(r.photo?'Replace photo':'Add photo evidence')+'<input class="file" type="file" accept="image/*" data-chg="photo" data-kind="res" data-key="'+esc(key)+'"></label>';
+ if(r.photo)h+='<img class="thumb" src="'+r.photo+'" alt="Evidence photo for: '+esc(it.t)+'"><button class="btn sm" type="button" data-act="delphoto" data-key="'+esc(key)+'"'+fk('dp'+key)+'>Remove photo</button>';
+ else if(r.s==='p'||r.s==='n')h+=pill('warn','!','Photo evidence needed');
+ if(la){h+='<span class="mut" style="font-size:.9rem">Action <span class="mono">'+la.id+'</span> </span>'+actPill(la)+'<button class="btn sm" type="button" data-act="goact" data-id="'+la.id+'">See action</button>'}
+ h+='</div>';
+ return h+'</article>'}
+function vAudit(){
+ var cid=sel(),c=col(cid),zone=ui.zone[cid]&&c.zones.indexOf(ui.zone[cid])>-1?ui.zone[cid]:c.zones[0],sc=scoreOf(cid,zone),all=scoreOf(cid),au=c.audit[zone]||{date:0,by:''};
+ var h='<section class="sec"><div class="rowb"><div class="pg"><span class="lbl">Inspection checklist</span><h2>'+esc(c.name)+'</h2></div><div style="display:flex;gap:.8rem;align-items:center">'+ring(all.pct)+'<span class="lbl">College<br>score</span></div></div>';
+ h+='<div class="chips zonechips" role="group" aria-label="Department or area">';
+ c.zones.forEach(function(z){var s=scoreOf(cid,z);h+='<button class="chip" type="button" data-act="zone" data-v="'+esc(z)+'" aria-pressed="'+(z===zone)+'"'+fk('z'+z)+'>'+esc(z)+' <span class="mono">'+(s.pct==null?'–':s.pct+'%')+'</span></button>'});
+ h+='</div>';
+ h+='<div class="card stack"><div class="rowb"><div><span class="lbl">Area in view</span><h3>'+esc(zone)+'</h3></div><div>'+(sc.pct==null?pill('na','?','Not inspected'):'<span class="mono" style="font-size:1.3rem;font-weight:700">'+sc.pct+'%</span> '+scorePill(sc.pct))+'</div></div>'+meter(sc.pct)+'<div class="row" style="align-items:flex-end;gap:.8rem 2rem"><div class="field"><label for="aud">Inspected by</label><input id="aud" data-chg="auditor" value="'+esc(au.by)+'" autocomplete="off"></div><div class="field"><span class="lbl">Last inspection</span><span class="mono">'+fmt(au.date)+'</span></div><div class="field"><span class="lbl">Progress</span><span class="mono">'+sc.done+' of '+sc.tot+' items inspected</span></div></div></div></section>';
+ CATS.forEach(function(cat){
+  var items=applicable(zone).filter(function(i){return i.cat===cat[0]});if(!items.length)return;
+  h+='<section class="sec"><h3>'+cat[1]+'</h3>';items.forEach(function(it){h+=itemCard(cid,zone,it)});h+='</section>'});
+ return h}
+
+function vMap(){
+ var cid=sel(),c=col(cid),R=reach(cid),dest=ui.route[cid]||'';
+ var POS2={gate:[85,200],admin:[290,200],library:[470,75],arts:[690,75],hall:[815,200],science:[470,335],canteen:[290,335],hostel:[690,335]};
+ var steps=dest&&R.st[dest]!=='none'&&dest!=='gate'?pathTo(R,dest):null,inRoute={};
+ if(steps)steps.forEach(function(s){inRoute[s.i]=1});
+ var h='<section class="sec"><div class="pg"><span class="lbl">Accessible-route map</span><h2>'+esc(c.name)+'</h2></div>';
+ h+='<div class="mapctl"><div class="card stack"><div class="field"><label for="dest">Where does the student need to go?</label><select id="dest" data-chg="dest"><option value="">Choose a building</option>'+Object.keys(NODES).filter(function(k){return k!=='gate'}).map(function(k){return '<option value="'+k+'"'+(dest===k?' selected':'')+'>'+NODES[k]+'</option>'}).join('')+'</select></div><p class="mut" style="font-size:.9rem">Each link takes its colour and line style from its ramp, lift or path status. Pick a building to test for a step-free route from the main gate. Schematic only, not to scale.</p></div>';
+ h+='<div class="card stack" aria-live="polite">';
+ if(!dest)h+='<p class="mut">Choose a building to see whether a wheelchair user can reach it from the main gate, and which links the route depends on.</p>';
+ else{
+  var s=R.st[dest];
+  if(s==='clean')h+='<p>'+pill('ok','✓','Step-free route available')+' <b>Main gate to '+NODES[dest]+'</b></p>';
+  else if(s==='caution')h+='<p>'+pill('warn','½','Route exists with problems')+' <b>Main gate to '+NODES[dest]+'</b></p><p class="mut">Every route uses at least one link that needs repair or has not been checked.</p>';
+  else{h+='<p>'+pill('bad','✕','No step-free route')+' <b>Main gate to '+NODES[dest]+'</b></p>';
+   var fr=[];EDGES.forEach(function(e,i){if(eSt(cid,i)==='blocked'){var A=R.B.dist[e.a]!==undefined,B2=R.B.dist[e.b]!==undefined;if(A!==B2)fr.push(i)}});
+   h+=fr.length?'<p>Blocked at: '+fr.map(function(i){return '<b>'+esc(EDGES[i].name)+'</b>'}).join(', ')+'.</p>':'<p class="mut">The links around this building have not been checked.</p>'}
+  if(steps)h+='<ol class="list-sp">'+steps.map(function(st){var e=EDGES[st.i];return '<li>'+NODES[st.from]+' to '+NODES[st.to]+' by '+esc(e.name)+' '+stPill(e.k,eSt(cid,st.i))+'</li>'}).join('')+'</ol>'}
+ h+='</div></div>';
+ var W=900,Hh=410;
+ h+='<div class="mapbox" tabindex="0" role="region" aria-label="Campus route map"><svg viewBox="0 0 '+W+' '+Hh+'" role="img" aria-label="Campus map with '+EDGES.length+' route links between '+Object.keys(NODES).length+' places"><defs><pattern id="gp" width="30" height="30" patternUnits="userSpaceOnUse"><path d="M30 0H0V30" fill="none" stroke="var(--line)" stroke-width="1" opacity=".55"/></pattern></defs><rect width="'+W+'" height="'+Hh+'" fill="url(#gp)"/>';
+ EDGES.forEach(function(e,i){
+  var a=POS2[e.a],b=POS2[e.b],st=eSt(cid,i),da=st==='partial'?'14 9':st==='blocked'?'3 11':st==='unchecked'?'2 9':'none';
+  if(inRoute[i])h+='<line x1="'+a[0]+'" y1="'+a[1]+'" x2="'+b[0]+'" y2="'+b[1]+'" stroke="var(--accent)" stroke-opacity=".35" stroke-width="24" stroke-linecap="round"/>';
+  h+='<line class="e-'+st+'" x1="'+a[0]+'" y1="'+a[1]+'" x2="'+b[0]+'" y2="'+b[1]+'" stroke-width="7" stroke-linecap="round" stroke-dasharray="'+da+'"/>'});
+ EDGES.forEach(function(e,i){
+  var a=POS2[e.a],b=POS2[e.b],st=eSt(cid,i),mx=(a[0]+b[0])/2,my=(a[1]+b[1])/2,g=SG[st][1],steep=Math.abs(b[1]-a[1])>=0.7*Math.abs(b[0]-a[0]),nm=e.k==='ramp'?'Ramp':e.k==='lift'?'Lift':'Path';
+  h+='<g><circle cx="'+mx+'" cy="'+my+'" r="17" fill="var(--surface)" class="e-'+st+'" stroke-width="3"/><text x="'+mx+'" y="'+(my+6)+'" text-anchor="middle" font-size="17" font-weight="700" class="tx">'+g+'</text>'+
+   (steep?'<text x="'+(mx+26)+'" y="'+(my+5)+'" font-size="14" class="tx2">'+nm+'</text>':'<text x="'+mx+'" y="'+(my+37)+'" text-anchor="middle" font-size="14" class="tx2">'+nm+'</text>')+'</g>'});
+ Object.keys(NODES).forEach(function(k){
+  var p=POS2[k],st=R.st[k],lab=st==='start'?'Start':st==='clean'?'Step-free':st==='caution'?'With problems':'No route';
+  h+='<g><rect x="'+(p[0]-70)+'" y="'+(p[1]-29)+'" width="140" height="58" rx="10" class="n-'+st+'" stroke-width="3"/><text x="'+p[0]+'" y="'+(p[1]-3)+'" text-anchor="middle" font-size="15" font-weight="700" class="tx">'+NODES[k]+'</text><text x="'+p[0]+'" y="'+(p[1]+18)+'" text-anchor="middle" font-size="13" class="tx2">'+lab+'</text></g>'});
+ h+='</svg></div>';
+ h+='<div class="legend"><span>✓ Working or clear (solid)</span><span>½ Needs repair or partly usable (dashed)</span><span>✕ Out of service or blocked (dotted)</span><span>? Not checked (fine dots)</span></div></section>';
+ h+='<section class="sec"><h3>Route links</h3><div class="card scroll"><table><thead><tr><th>Link</th><th>Type</th><th>Status</th><th>Last checked</th></tr></thead><tbody>';
+ EDGES.forEach(function(e,i){var a=eAsset(cid,i);if(!a)return;h+='<tr><td>'+esc(e.name)+'<br><span class="mut" style="font-size:.85rem">'+esc(a.loc)+'</span></td><td>'+(e.k==='path'?'Path':e.k==='ramp'?'Ramp':'Lift')+'</td><td>'+statusSelect(a)+'</td><td class="mono">'+fmt(a.checked)+'</td></tr>'});
+ h+='</tbody></table></div></section>';
+ return h}
+function statusSelect(a){
+ var l=SL[a.kind];return '<select data-chg="astatus" data-id="'+a.id+'"'+fk('as'+a.id)+' aria-label="Status of '+esc(a.name)+'">'+['ok','partial','blocked','unchecked'].map(function(s){return '<option value="'+s+'"'+(a.status===s?' selected':'')+'>'+SG[s][1]+' '+l[s]+'</option>'}).join('')+'</select>'}
+
+function vFac(){
+ var cid=sel(),c=col(cid),sub=ui.fac;
+ var h='<section class="sec"><div><span class="lbl">Facilities and assistive technology</span><h2>'+esc(c.name)+'</h2></div><div class="chips" role="group" aria-label="Facility type">';
+ [['routes','Routes, ramps and lifts'],['toilets','Accessible toilets'],['at','Assistive technology']].forEach(function(t){h+='<button class="chip" type="button" data-act="sub" data-v="'+t[0]+'" aria-pressed="'+(sub===t[0])+'"'+fk('sub'+t[0])+'>'+t[1]+'</button>'});
+ h+='</div>';
+ function sumLine(list){var ok=list.filter(function(a){return a.status==='ok'}).length,nc=list.filter(function(a){return a.status==='unchecked'}).length;return '<p><b class="mono">'+ok+' of '+list.length+'</b> working'+(nc?', <b class="mono">'+nc+'</b> not yet checked':'')+'.</p>'}
+ function assetRow(a,extra){
+  var act=lastAct('asset',a.id);
+  return '<article class="card stack"><div class="rowb"><div style="min-width:0"><h4>'+esc(a.name)+'</h4><p class="mut" style="font-size:.9rem">'+esc(a.loc)+' · last checked <span class="mono">'+fmt(a.checked)+'</span></p></div>'+statusSelect(a)+'</div>'+(extra||'')+(act?'<div class="row"><span class="mut" style="font-size:.9rem">Action <span class="mono">'+act.id+'</span></span>'+actPill(act)+'<button class="btn sm" type="button" data-act="goact" data-id="'+act.id+'">See action</button></div>':'')+'</article>'}
+ if(sub==='routes'){
+  var l=S.assets.filter(function(a){return a.cid===cid&&a.kind!=='toilet'});
+  h+=sumLine(l)+'<p class="mut" style="font-size:.92rem">Setting a status to Needs repair or Out of service opens a corrective action. Setting it back to Working marks the fix as reported. It is not counted as fixed until an auditor verifies it.</p><div class="grid">'+l.map(function(a){return assetRow(a)}).join('')+'</div>'}
+ else if(sub==='toilets'){
+  var t=S.assets.filter(function(a){return a.cid===cid&&a.kind==='toilet'});
+  h+=sumLine(t)+'<div class="grid">'+t.map(function(a){
+   var f=a.feat||{rails:false,door:false,alarm:false,turn:false},ch=[['rails','Grab rails'],['door','Door 900 mm or wider'],['alarm','Alarm cord'],['turn','1.5 m turning space']].map(function(x){return '<button class="chip" type="button" data-act="tfeat" data-id="'+a.id+'" data-v="'+x[0]+'" aria-pressed="'+(!!f[x[0]])+'"'+fk('tf'+a.id+x[0])+'>'+(f[x[0]]?'✓ ':'')+x[1]+'</button>'}).join('');
+   return assetRow(a,'<div class="chips" role="group" aria-label="Features of '+esc(a.name)+'">'+ch+'</div>')}).join('')+'</div>';
+  h+='<form class="card row" data-act="addtoilet" style="align-items:flex-end"><div class="field"><label for="tn">New accessible toilet, location</label><input id="tn" required autocomplete="off" placeholder="e.g. Commerce block ground floor"></div><div class="field"><label for="tz">Area</label><select id="tz">'+c.zones.map(function(z){return '<option>'+esc(z)+'</option>'}).join('')+'</select></div><button class="btn" type="submit">Add toilet</button></form>'}
+ else{
+  h+='<div class="card scroll"><table><thead><tr><th>Item</th><th class="num">Needed</th><th class="num">Owned</th><th class="num">Working</th><th>Gap</th><th>Action</th></tr></thead><tbody>';
+  ATK.forEach(function(k){
+   var r=S.at[cid+'|'+k[0]]||{needed:0,owned:0,working:0},gap=r.needed-r.working,act=lastAct('at',cid+'|'+k[0]),live=actFor('at',cid+'|'+k[0]);
+   h+='<tr><td>'+k[1]+'</td>'+['needed','owned','working'].map(function(f){return '<td class="num"><input type="number" min="0" value="'+r[f]+'" data-chg="at" data-k="'+k[0]+'" data-f="'+f+'" aria-label="'+k[1]+', '+f+'"></td>'}).join('')+'<td>'+(gap>0?pill('bad','✕',gap+' short'):pill('ok','✓','Enough'))+'</td><td>'+(act?actPill(act)+' <button class="btn sm" type="button" data-act="goact" data-id="'+act.id+'">View</button>':(gap>0?'<button class="btn sm" type="button" data-act="raiseat" data-k="'+k[0]+'"'+fk('rat'+k[0])+'>Raise action</button>':''))+(act&&!live&&gap>0?' <button class="btn sm" type="button" data-act="raiseat" data-k="'+k[0]+'">Raise again</button>':'')+'</td></tr>'});
+  h+='</tbody></table></div><p class="mut" style="font-size:.92rem">Needed is the stock required for the students with disabilities enrolled. Working is what works today. A shortage can be raised as a corrective action.</p>'}
+ return h+'</section>'}
+
+var FILTERS=[['all','All'],['overdue','Overdue'],['active','Open or in progress'],['fixed','Awaiting verification'],['verified','Verified fixed'],['reopened','Reopened']];
+function actCard(a){
+ var od=isOver(a),src=a.src==='item'?'Checklist':a.src==='asset'?'Facility':'Assistive technology',dd=Math.round((a.deadline-Date.now())/DAY);
+ var dl=a.status==='verified'?'Closed in '+Math.max(0,Math.round((a.verifiedOn-a.raised)/DAY))+' days':a.status==='fixed'?'Deadline '+fmt(a.deadline):od?Math.abs(dd)+' days overdue':dd<=0?'Due today':'Due in '+dd+' days';
+ var idx={open:0,in_progress:1,fixed:2,verified:3,reopened:0}[a.status],names=['Raised','In progress','Fixed','Verified'];
+ var h='<article class="card stack" id="act-'+a.id+'"><div class="rowb"><div style="min-width:0"><span class="lbl">'+a.id+' · '+src+' · '+esc(a.zone)+'</span><h3>'+esc(a.title)+'</h3></div><div class="row">'+pill(a.sev===3?'bad':a.sev===2?'warn':'na','',SEV[a.sev])+actPill(a)+'</div></div>';
+ h+='<ol class="stepper" aria-label="Progress">'+names.map(function(n,i){var c=a.status==='reopened'&&i===0?'bad':i<idx?'done':i===idx?'cur':'';return '<li class="'+c+'">'+(a.status==='reopened'&&i===0?'Reopened':n)+'</li>'}).join('')+'</ol>';
+ h+='<div class="row"><span class="pill '+(od?'t-bad':'t-na')+'">'+(od?'✕ ':'')+esc(dl)+'</span>';
+ if(a.status!=='verified'){
+  h+='<div class="field"><label for="ow-'+a.id+'">Owner</label><input id="ow-'+a.id+'" data-chg="owner" data-id="'+a.id+'" value="'+esc(a.owner)+'" placeholder="Who is responsible?"></div><div class="field"><label for="dd-'+a.id+'">Deadline</label><input id="dd-'+a.id+'" type="date" data-chg="deadline" data-id="'+a.id+'" value="'+dstr(a.deadline)+'"></div>'}
+ else h+='<span class="mut">Verified '+fmt(a.verifiedOn)+' · owner '+esc(a.owner||'not recorded')+'</span>';
+ if(a.ext)h+='<span class="pill t-warn">Extended '+a.ext+(a.ext>1?' times':' time')+'</span>';
+ if(a.reopens)h+='<span class="pill t-bad">Reopened '+a.reopens+(a.reopens>1?' times':' time')+'</span>';
+ h+='</div>';
+ if(a.status==='open'||a.status==='reopened')h+='<div class="row"><button class="btn" type="button" data-act="astart" data-id="'+a.id+'"'+fk('st'+a.id)+'>Start work</button></div>';
+ if(a.status==='in_progress')h+='<div class="row"><button class="btn primary" type="button" data-act="afix" data-id="'+a.id+'"'+fk('fx'+a.id)+'>College reports it fixed</button><span class="mut" style="font-size:.9rem">This does not count as fixed until it is verified.</span></div>';
+ if(a.status==='fixed'){
+  var ok=!!(a.vphoto||(a.vnote||'').trim().length>=10);
+  h+='<div class="verify"><h4>Re-inspection needed</h4><p style="font-size:.92rem">Go back to the site and check the fix. Record what you found.</p><div class="field"><label for="vn-'+a.id+'">What did you find?</label><textarea id="vn-'+a.id+'" data-chg="vnote" data-id="'+a.id+'">'+esc(a.vnote)+'</textarea></div><div class="row"><label class="btn sm">'+(a.vphoto?'Replace photo':'Add re-inspection photo')+'<input class="file" type="file" accept="image/*" data-chg="photo" data-kind="vphoto" data-id="'+a.id+'"></label>'+(a.vphoto?'<img class="thumb" src="'+a.vphoto+'" alt="Re-inspection photo for '+esc(a.title)+'">':'')+'</div><div class="row"><button class="btn primary" type="button" data-act="averify" data-id="'+a.id+'"'+(ok?'':' disabled')+fk('vf'+a.id)+'>Verify as fixed</button><button class="btn danger" type="button" data-act="afail" data-id="'+a.id+'"'+fk('fl'+a.id)+'>Not fixed, reopen</button></div>'+'<p id="vh-'+a.id+'" style="font-size:.88rem"'+(ok?' hidden':'')+'>Add a photo or a note of at least 10 characters to enable verification.</p></div>'}
+ h+='<div class="row">';
+ if(a.before)h+='<figure style="margin:0"><img class="thumb" src="'+a.before+'" alt="Before photo"><figcaption class="lbl">Before</figcaption></figure>';
+ else if(a.status!=='verified')h+='<label class="btn sm">Add before photo<input class="file" type="file" accept="image/*" data-chg="photo" data-kind="before" data-id="'+a.id+'"></label>';
+ if(a.after)h+='<figure style="margin:0"><img class="thumb" src="'+a.after+'" alt="After photo"><figcaption class="lbl">After, at re-inspection</figcaption></figure>';
+ h+='</div>';
+ h+='<details><summary>History ('+a.hist.length+')</summary><ol class="hist">'+a.hist.map(function(x){return '<li><span class="mono">'+fmt(x.d)+'</span> · '+esc(x.t)+(x.note?'. '+esc(x.note):'')+'</li>'}).join('')+'</ol></details></article>';
+ return h}
+function vActions(){
+ var cid=sel(),c=col(cid),all=S.actions.filter(function(a){return a.cid===cid}),T=sumActs(all),f=ui.filter;
+ var list=all.filter(function(a){return f==='all'?true:f==='overdue'?isOver(a):f==='active'?(a.status==='open'||a.status==='in_progress'):a.status===f});
+ function rk(a){return isOver(a)?0:a.status==='reopened'?1:(a.status==='open'||a.status==='in_progress')?2:a.status==='fixed'?3:4}
+ list.sort(function(x,y){return rk(x)-rk(y)||x.deadline-y.deadline});
+ var h='<section class="sec"><div><span class="lbl">Corrective actions</span><h2>'+esc(c.name)+'</h2></div><div class="card stack"><p><b class="mono">'+T.verified+'</b> of <b class="mono">'+T.total+'</b> problems are verified fixed ('+pct(T.verified,T.total)+'%).</p>'+funnel(T)+legend(T)+'</div>';
+ h+='<div class="chips" role="group" aria-label="Filter actions">'+FILTERS.map(function(x){var n=all.filter(function(a){return x[0]==='all'?true:x[0]==='overdue'?isOver(a):x[0]==='active'?(a.status==='open'||a.status==='in_progress'):a.status===x[0]}).length;return '<button class="chip" type="button" data-act="filter" data-v="'+x[0]+'" aria-pressed="'+(f===x[0])+'"'+fk('f'+x[0])+'>'+x[1]+' <span class="mono">'+n+'</span></button>'}).join('')+'</div>';
+ h+=list.length?'<div class="stack">'+list.map(actCard).join('')+'</div>':'<div class="card"><p>No actions match this filter.</p></div>';
+ return h+'</section>'}
+
+function zoneStats(cid,zone){
+ var acts=S.actions.filter(function(a){return (cid?a.cid===cid:true)&&a.zone===zone});
+ var res=0,ph=0;Object.keys(S.results).forEach(function(k){var p=k.split('|');if((cid?p[0]===cid:true)&&p[1]===zone){var r=S.results[k];if(r.s==='p'||r.s==='n'||r.initial==='p'||r.initial==='n'){res++;if(r.photo)ph++}}});
+ return {acts:acts,sum:sumActs(acts)}}
+function rollScore(zone){var num=0,den=0,n=0;S.colleges.forEach(function(c){if(c.zones.indexOf(zone)<0)return;applicable(zone).forEach(function(it){var r=S.results[c.id+'|'+zone+'|'+it.id];if(r&&r.s&&r.s!=='na'){den+=it.w;num+=it.w*(r.s==='c'?1:r.s==='p'?.5:0)}});n++});return {pct:den?Math.round(num/den*100):null,n:n}}
+function csvText(){
+ var rows=[['College','Area','Items inspected','Items in checklist','Score %','Problems raised','Verified fixed','Awaiting verification','Overdue','Reopened']];
+ S.colleges.forEach(function(c){c.zones.forEach(function(z){var s=scoreOf(c.id,z),a=sumActs(S.actions.filter(function(x){return x.cid===c.id&&x.zone===z}));rows.push([c.name,z,s.done,s.tot,s.pct==null?'':s.pct,a.total,a.verified,a.awaiting,a.overdue,a.reopened])})});
+ return rows.map(function(r){return r.map(function(v){v=String(v);return /[",\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}).join(',')}).join('\n')}
+function summaryText(){
+ var T=sumActs(S.actions),t='Inclusive Campus Accessibility Audit, summary '+fmt(Date.now())+'\n'+T.total+' problems logged, '+T.verified+' verified fixed ('+pct(T.verified,T.total)+'%), '+T.awaiting+' awaiting re-inspection, '+T.overdue+' overdue.\n\n';
+ S.colleges.forEach(function(c){var s=scoreOf(c.id),a=sumActs(S.actions.filter(function(x){return x.cid===c.id}));t+=c.name+': score '+(s.pct==null?'not audited':s.pct+'%')+', verified fixed '+a.verified+' of '+a.total+', overdue '+a.overdue+'\n'});
+ return t}
+function vReports(){
+ var T=sumActs(S.actions);
+ var h='<section class="sec"><div><span class="lbl">Department-wide reports</span><h2>Every area, every college</h2></div><p class="mut" style="max-width:64ch">Scores show how accessible each area is today. The fix columns show whether the problems found there are being resolved and verified.</p>';
+ h+='<h3>Score by college and area</h3><div class="card scroll"><table class="heat"><thead><tr><th>College</th>'+ZONES.map(function(z){return '<th class="num" style="text-align:center">'+esc(z)+'</th>'}).join('')+'<th class="num" style="text-align:center">All</th></tr></thead><tbody>';
+ S.colleges.forEach(function(c){
+  h+='<tr><td>'+esc(c.name)+'</td>';
+  ZONES.forEach(function(z){
+   if(c.zones.indexOf(z)<0){h+='<td class="h"><span class="mut">n/a</span></td>';return}
+   var s=scoreOf(c.id,z),b=band(s.pct);h+='<td class="h" style="background:var(--'+(s.pct==null?'na':b[0])+'-soft);color:var(--'+(s.pct==null?'na':b[0])+')">'+(s.pct==null?'–':(b[0]==='ok'?'✓ ':b[0]==='warn'?'½ ':'✕ ')+s.pct+'%')+'</td>'});
+  var a=scoreOf(c.id),ab=band(a.pct);h+='<td class="h" style="background:var(--'+(a.pct==null?'na':ab[0])+'-soft);color:var(--'+(a.pct==null?'na':ab[0])+');font-weight:700">'+(a.pct==null?'–':a.pct+'%')+'</td></tr>'});
+ h+='</tbody></table></div>';
+ h+='<h3>By area, across all colleges</h3><div class="card scroll"><table><thead><tr><th>Area</th><th class="num">Colleges</th><th class="num">Score</th><th class="num">Problems</th><th class="num">Verified fixed</th><th class="num">Awaiting</th><th class="num">Overdue</th><th>Pipeline</th></tr></thead><tbody>';
+ ZONES.forEach(function(z){var rs=rollScore(z),zs=sumActs(S.actions.filter(function(a){return a.zone===z}));
+  h+='<tr><td>'+esc(z)+'</td><td class="num mono">'+rs.n+'</td><td class="num mono">'+(rs.pct==null?'–':rs.pct+'%')+'</td><td class="num mono">'+zs.total+'</td><td class="num mono">'+zs.verified+' ('+pct(zs.verified,zs.total)+'%)</td><td class="num mono">'+zs.awaiting+'</td><td class="num mono">'+zs.overdue+'</td><td style="min-width:9rem">'+funnel(zs,true)+'</td></tr>'});
+ h+='</tbody></table></div>';
+ h+='<h3>By college</h3><div class="card scroll"><table><thead><tr><th>College</th><th class="num">Score</th><th class="num">Problems</th><th class="num">Verified fixed</th><th class="num">Awaiting</th><th class="num">Overdue</th><th class="num">Reopened</th><th class="num">Photos on findings</th></tr></thead><tbody>';
+ S.colleges.forEach(function(c){var s=scoreOf(c.id),a=sumActs(S.actions.filter(function(x){return x.cid===c.id})),fnd=0,ph=0;
+  Object.keys(S.results).forEach(function(k){if(k.indexOf(c.id+'|')===0){var r=S.results[k];if(r.s==='p'||r.s==='n'){fnd++;if(r.photo)ph++}}});
+  h+='<tr><td>'+esc(c.name)+'</td><td class="num mono">'+(s.pct==null?'–':s.pct+'%')+'</td><td class="num mono">'+a.total+'</td><td class="num mono">'+a.verified+' ('+pct(a.verified,a.total)+'%)</td><td class="num mono">'+a.awaiting+'</td><td class="num mono">'+a.overdue+'</td><td class="num mono">'+a.reopened+'</td><td class="num mono">'+ph+' of '+fnd+'</td></tr>'});
+ h+='</tbody></table></div>';
+ h+='<div class="row"><button class="btn primary" type="button" data-act="copycsv"'+fk('ccsv')+'>Copy report as CSV</button><button class="btn" type="button" data-act="copysum"'+fk('csum')+'>Copy text summary</button></div>';
+ if(ui.copyText)h+='<div class="field"><label for="copybox">Copy this text yourself (automatic copy is not available here)</label><textarea id="copybox" readonly style="min-height:10rem;font-family:var(--f-mono)">'+esc(ui.copyText)+'</textarea></div>';
+ h+='<div class="foot"><p>Checklist wording follows commonly used access criteria such as a 1:12 ramp gradient and 900 mm door width. Before formal use, check each item against the current UGC guidance for higher education institutions and the Harmonised Guidelines under the Rights of Persons with Disabilities Act, 2016.</p><div class="row"><button class="btn sm danger" type="button" data-act="reset"'+fk('reset')+'>'+(ui.confirmReset?'Click again to erase everything and restore the sample data':'Reset to sample data')+'</button></div></div></section>';
+ return h}
+
+/* ---------- render ---------- */
+var VIEWS={overview:vOverview,audit:vAudit,map:vMap,facilities:vFac,actions:vActions,reports:vReports};
+var TABS=[['overview','Overview'],['audit','Checklist'],['map','Route map'],['facilities','Facilities'],['actions','Actions'],['reports','Reports']];
+function render(){
+ var ae=document.activeElement;if(ae&&ae.dataset&&ae.dataset.fk)lastFocus=ae.dataset.fk;else lastFocus='';
+ var sc=window.scrollY,cid=sel();
+ var cs=document.getElementById('collegeSel');cs.innerHTML=S.colleges.map(function(c){return '<option value="'+c.id+'"'+(c.id===cid?' selected':'')+'>'+esc(c.name)+'</option>'}).join('');
+ var od=S.actions.filter(function(a){return a.cid===cid&&isOver(a)}).length,cp=scoreOf(cid).pct;
+ document.getElementById('ctx').innerHTML=(cp==null?pill('na','?','Not inspected'):'<span class="mono">'+cp+'%</span> '+scorePill(cp))+' <span><span class="mono">'+od+'</span> overdue</span>';
+ document.getElementById('tabs').innerHTML=TABS.map(function(t){return '<a href="#'+t[0]+'"'+(t[0]===view?' aria-current="page"':'')+'><svg class="ic" aria-hidden="true"><use href="#i-'+t[0]+'"/></svg><span>'+t[1]+'</span>'+(t[0]==='actions'&&od?'<span class="count" aria-label="'+od+' overdue">'+od+'</span>':'')+'</a>'}).join('');
+ document.getElementById('app').innerHTML=VIEWS[view]();
+ if(lastFocus){var el=document.querySelector('[data-fk="'+lastFocus.replace(/"/g,'\\"')+'"]');if(el)el.focus({preventScroll:true})}
+ window.scrollTo(0,sc);
+ if(ui.copyText){var cb=document.getElementById('copybox');if(cb){cb.focus();cb.select()}}}
+function route(){var h=(location.hash||'').replace('#','');view=VIEWS[h]?h:'overview';render();window.scrollTo(0,0)}
+function go(v){if(location.hash==='#'+v){route()}else location.hash='#'+v}
+function copy(text){
+ ui.copyText='';
+ if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(function(){toast('Copied to the clipboard.');render()},function(){ui.copyText=text;render()})}
+ else{ui.copyText=text;render()}}
+
+/* ---------- events ---------- */
+var ACT={
+ theme:function(){prefs.theme=prefs.theme==='system'?'light':prefs.theme==='light'?'dark':'system';savePrefs();applyPrefs()},
+ size:function(){prefs.size=prefs.size==='large'?'normal':'large';savePrefs();applyPrefs()},
+ open:function(t){S.sel=t.dataset.id;save();go('audit')},
+ addtoggle:function(){ui.addCollege=!ui.addCollege;render()},
+ zone:function(t){ui.zone[sel()]=t.dataset.v;render()},
+ res:function(t){setRes(t.dataset.key,t.dataset.v)},
+ delphoto:function(t){var r=S.results[t.dataset.key];if(r){r.photo='';save();render()}},
+ goact:function(t){ui.filter='all';S.sel=S.actions.filter(function(a){return a.id===t.dataset.id})[0].cid;go('actions');setTimeout(function(){var e=document.getElementById('act-'+t.dataset.id);if(e){e.scrollIntoView({block:'start'});var s=e.querySelector('button,input,summary');if(s)s.focus({preventScroll:true})}},60)},
+ sub:function(t){ui.fac=t.dataset.v;render()},
+ filter:function(t){ui.filter=t.dataset.v;render()},
+ tfeat:function(t){var a=S.assets.filter(function(x){return x.id===t.dataset.id})[0];a.feat=a.feat||{};a.feat[t.dataset.v]=!a.feat[t.dataset.v];a.checked=Date.now();save();render()},
+ astart:function(t){var a=actById(t.dataset.id);a.status='in_progress';logA(a,'Work started','');save();render()},
+ afix:function(t){var a=actById(t.dataset.id);markFixed(a,'Needs re-inspection.');if(a.src==='asset'){var s=S.assets.filter(function(x){return x.id===a.ref})[0];if(s){s.status='ok';s.checked=Date.now()}}save();render()},
+ averify:function(t){var a=actById(t.dataset.id);if(!(a.vphoto||(a.vnote||'').trim().length>=10)){toast('Add a photo or a note of at least 10 characters first.');return}verify(a,(a.vnote||'').trim()||'Verified with photo.',a.vphoto);save();render();toast('Verified. This problem now counts as fixed.')},
+ afail:function(t){var a=actById(t.dataset.id);var note=(a.vnote||'').trim()||'Still not fixed at re-inspection.';reopen(a,note);a.vnote='';a.vphoto='';
+  if(a.src==='asset'){var s=S.assets.filter(function(x){return x.id===a.ref})[0];if(s){s.status='partial';s.checked=Date.now()}}
+  if(a.src==='item'){var r=S.results[a.ref];if(r&&r.s==='c')r.s=r.initial==='p'?'p':'n'}
+  save();render();toast('Reopened with a new deadline in 14 days.')},
+ raiseat:function(t){var k=t.dataset.k,cid=sel(),lab=ATK.filter(function(x){return x[0]===k})[0][1];if(actFor('at',cid+'|'+k)){toast('An action is already open for this item.');return}
+  mkAct({src:'at',ref:cid+'|'+k,cid:cid,zone:zoneFor(S,cid,'Library'),title:'Close shortage: '+lab,sev:2,note:'Shortage recorded in the inventory.'});save();render();toast('Corrective action raised.')},
+ copycsv:function(){copy(csvText())},
+ copysum:function(){copy(summaryText())},
+ reset:function(){if(!ui.confirmReset){ui.confirmReset=true;render();return}ui.confirmReset=false;S=seed();save();toast('Sample data restored.');render()}
+};
+function actById(id){return S.actions.filter(function(a){return a.id===id})[0]}
+document.addEventListener('click',function(e){var t=e.target.closest('[data-act]');if(!t||t.tagName==='FORM')return;var f=ACT[t.dataset.act];if(f){f(t,e)}});
+document.addEventListener('submit',function(e){
+ var t=e.target;e.preventDefault();
+ if(t.dataset.act==='addform'){
+  var name=document.getElementById('nc-name').value.trim(),d=document.getElementById('nc-dist').value.trim();if(!name||!d)return;
+  var id='c'+Date.now().toString(36);blankCollege(S,id,name,d,'Added by you');
+  S.sel=id;ui.addCollege=false;save();toast('College added. Start with the checklist.');go('audit')}
+ if(t.dataset.act==='addtoilet'){
+  var nm=document.getElementById('tn').value.trim(),z=document.getElementById('tz').value;if(!nm)return;
+  S.assets.push({id:'A'+Date.now().toString(36),cid:sel(),kind:'toilet',name:'Accessible toilet, '+nm,loc:nm,edge:null,zone:z,status:'unchecked',checked:0,note:'',feat:{rails:false,door:false,alarm:false,turn:false}});save();render();toast('Toilet added as Not checked.')}});
+var CHG={
+ college:function(t){S.sel=t.value;save();render()},
+ note:function(t){var r=S.results[t.dataset.key]||(S.results[t.dataset.key]={s:null,initial:null,note:'',photo:'',date:0});r.note=t.value;save()},
+ auditor:function(t){var cid=sel(),c=col(cid),z=ui.zone[cid]&&c.zones.indexOf(ui.zone[cid])>-1?ui.zone[cid]:c.zones[0];c.audit[z]=c.audit[z]||{date:0,by:''};c.audit[z].by=t.value.trim();save()},
+ photo:function(t){var f=t.files&&t.files[0];if(!f)return;var kind=t.dataset.kind;
+  readPhoto(f,function(url){
+   if(kind==='res'){var r=S.results[t.dataset.key]||(S.results[t.dataset.key]={s:null,initial:null,note:'',photo:'',date:0});r.photo=url;var a=actFor('item',t.dataset.key);if(a&&!a.before)a.before=url}
+   else{var a2=actById(t.dataset.id);if(!a2)return;if(kind==='vphoto')a2.vphoto=url;else a2.before=url}
+   save();render()})},
+ dest:function(t){ui.route[sel()]=t.value;render()},
+ ddist:function(t){ui.dist=t.value;renderDir()},
+ dsort:function(t){ui.sort=t.value;renderDir()},
+ astatus:function(t){setAsset(t.dataset.id,t.value)},
+ at:function(t){setAT(sel(),t.dataset.k,t.dataset.f,Number(t.value))},
+ owner:function(t){var a=actById(t.dataset.id);a.owner=t.value.trim();save()},
+ deadline:function(t){var a=actById(t.dataset.id);if(!t.value)return;var nd=fromD(t.value);if(nd===a.deadline)return;
+  logA(a,'Deadline moved from '+fmt(a.deadline)+' to '+fmt(nd),'');if(nd>a.deadline)a.ext=(a.ext||0)+1;a.deadline=nd;save();render()},
+ vnote:function(t){var a=actById(t.dataset.id);a.vnote=t.value;save();
+  var ok=!!(a.vphoto||a.vnote.trim().length>=10),b=document.querySelector('[data-act="averify"][data-id="'+a.id+'"]'),m=document.getElementById('vh-'+a.id);
+  if(b)b.disabled=!ok;if(m)m.hidden=ok}
+};
+document.addEventListener('input',function(e){var t=e.target;if(t.dataset&&t.dataset.inp==='q'){ui.q=t.value;renderDir()}});
+document.addEventListener('change',function(e){var t=e.target,c=t.dataset&&t.dataset.chg;if(c&&CHG[c])CHG[c](t)});
+window.addEventListener('hashchange',route);
+applyPrefs();route();
+})();
